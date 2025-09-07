@@ -3,6 +3,8 @@ use std::collections::VecDeque;
 use crate::block::{Block, Transaction, Header};
 use crate::block::block::compute_merkle_root;
 use crate::crypto::{Hashable, HASH_SIZE};
+use crate::error::blockchain::BlockchainError;
+use crate::consensus::{create_genesis_block, mine_block};
 
 
 pub struct Blockchain {
@@ -17,19 +19,31 @@ impl Blockchain {
         Self { blocks }
     }
 
+    pub fn new_with_genesis() -> Self {
+        let genesis = create_genesis_block();
+        Self::new(genesis)
+    }
+
     /// Get the latest block
     pub fn latest_block(&self) -> &Block {
         self.blocks.back().expect("Blockchain should have at least one block")
     }
 
     /// Add a new block to the chain
-    pub fn add_block(&mut self, block: Block) {
-        // validate previous hash matches latest block
+    pub fn add_block(&mut self, block: Block, skip_pow: bool) -> Result<(), BlockchainError> {
         let prev_hash = self.latest_block().double_sha256();
         if block.header.prev_hash != prev_hash {
-            panic!("Invalid block: previous hash does not match");
+            return Err(BlockchainError::InvalidPreviousHash);
         }
+
+        block.validate_merkle_root().map_err(|_| BlockchainError::InvalidMerkleRoot)?;
+
+        if !skip_pow {
+            block.header.validate_pow().map_err(|_| BlockchainError::InvalidMerkleRoot)?;
+        }
+
         self.blocks.push_back(block);
+        Ok(())
     }
 
     /// Simple validation: check PoW and merkle roots for all blocks
@@ -48,13 +62,15 @@ impl Blockchain {
                 }
             }
 
-            if !block.validate_merkle_root() {
+            if block.validate_merkle_root().is_err() {
                 return false;
             }
-            if !skip_pow && !block.header.validate_pow() {
+
+            if !skip_pow && block.header.validate_pow().is_err() {
                 return false;
             }
         }
+
         true
     }
 
@@ -78,6 +94,20 @@ impl Blockchain {
         );
 
         Block::new(header, transactions)
+    }
+
+    pub fn create_and_mine_block(
+        &self,
+        transactions: Vec<Transaction>,
+        difficulty_compact: u32,
+        timestamp: u32,
+    ) -> Block {
+        let prev_hash = self.latest_block().double_sha256();
+        let merkle_root = compute_merkle_root(&transactions);
+
+        let header = Header::new(1, timestamp, difficulty_compact, 0, prev_hash, merkle_root);
+        let mined_header = mine_block(header);
+        Block::new(mined_header, transactions)
     }
 
     /// Get block by height/index

@@ -1,5 +1,7 @@
 use crate::block::{Header, Serializable, Transaction};
 use crate::crypto::{HASH_SIZE, Hashable, double_sha256};
+use crate::consensus::validate_pow;
+use crate::error::block::BlockError;
 
 use bincode::{Decode, Encode};
 
@@ -22,14 +24,21 @@ impl Block {
     /// - PoW is valid
     /// - Merkle root matches tx list (stub for now)
     fn validate(&self) -> bool {
-        self.header.validate_pow() && self.validate_merkle_root()
+        validate_pow(&self.header) && self.validate_merkle_root().is_ok()
     }
 
-    /// Compute merkle root of transactions
-    pub fn validate_merkle_root(&self) -> bool {
+    /// Validate merkle root against transactions
+    pub fn validate_merkle_root(&self) -> Result<(), BlockError> {
         let merkle = compute_merkle_root(&self.transactions);
-        merkle == self.header.merkle_root
+
+        if merkle != self.header.merkle_root {
+            return Err(BlockError::InvalidMerkleRoot);
+        }
+
+        Ok(())
     }
+
+    
 
     #[cfg(test)]
     fn new_with_merkle(header: Header, txs: Vec<Transaction>) -> Self {
@@ -57,44 +66,44 @@ impl std::fmt::Display for Block {
 
 pub fn compute_merkle_root(transactions: &[Transaction]) -> [u8; HASH_SIZE] {
     if transactions.is_empty() {
-        return [0u8; HASH_SIZE];
+        return [0u8; HASH_SIZE]; // canonical empty merkle root
     }
 
-    let mut layer: Vec<[u8; HASH_SIZE]> = transactions.iter().map(|tx| tx.double_sha256()).collect();
+    let mut hashes: Vec<[u8; HASH_SIZE]> = transactions.iter().map(|tx| tx.double_sha256()).collect();
 
-    while layer.len() > 1 {
-        let mut next_layer = vec![];
+    while hashes.len() > 1 {
+        let mut next_level = Vec::new();
 
-        for i in (0..layer.len()).step_by(2) {
-            let left = layer[i];
-            let right = if i + 1 < layer.len() {
-                layer[i + 1]
-            } else {
-                layer[i]  // duplicate last if odd
-            };
+        for i in (0..hashes.len()).step_by(2) {
+            let left = hashes[i];
+            let right = if i + 1 < hashes.len() { hashes[i + 1] } else { hashes[i] };
 
-            let mut combined = Vec::with_capacity(Block::MERKLE_PAIR_SIZE);
-            combined.extend_from_slice(&left);
-            combined.extend_from_slice(&right);
-            next_layer.push(double_sha256(&combined));
+            let mut data = Vec::with_capacity(HASH_SIZE * 2);
+            data.extend_from_slice(&left);
+            data.extend_from_slice(&right);
+
+            next_level.push(double_sha256(&data));
         }
 
-        layer = next_layer;
+        hashes = next_level;
     }
 
-    layer[0]
+    hashes[0]
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::block::{self, Header};
+    use crate::block::Header;
+    use crate::consensus::fake_validate_pow;
 
     #[test]
     fn test_block_roundtrip_serialization() {
         // create two transactions
-        let tx1 = Transaction::new(vec![b"in1".to_vec()], vec![b"out1".to_vec()]);
-        let tx2 = Transaction::new(vec![b"in2".to_vec()], vec![b"out2".to_vec()]);
+        let tx1 = Transaction::new(vec![b"in1".to_vec()], vec![b"out1".to_vec()])
+            .expect("Failed to create tx1");
+        let tx2 = Transaction::new(vec![b"in2".to_vec()], vec![b"out2".to_vec()])
+            .expect("Failed to create tx2");
 
         let header = Header::new(1, 1234567890, 0x1d00ffff, 42, [0u8; HASH_SIZE], [0u8; 32]);
 
@@ -102,24 +111,26 @@ mod tests {
         let block = Block::new_with_merkle(header, vec![tx1.clone(), tx2.clone()]);
 
         // serialize & deserialize via Serializable trait
-        let bytes = block.serialize().unwrap();
-        let decoded = Block::from_bytes(&bytes).unwrap();
+        let bytes = block.serialize().expect("Failed to serialize block bytes");
+        let decoded = Block::from_bytes(&bytes)
+            .expect("Failed to decode block from bytes");
 
         // hash check via Hashable trait
         assert_eq!(block.double_sha256(), decoded.double_sha256());
 
         // merkle root validation
-        assert!(decoded.validate_merkle_root());
+        assert!(decoded.validate_merkle_root().is_ok());
 
         // PoW validation (fake for testing)
-        let pow_ok = Header::fake_validate_pow([0u8; 32], decoded.header.difficulty_compact);
+        let pow_ok = fake_validate_pow([0u8; 32], decoded.header.difficulty_compact);
         assert!(pow_ok);
     }
 
     #[test]
     fn test_block_display() {
         // create a transaction
-        let tx = Transaction::new(vec![b"in".to_vec()], vec![b"out".to_vec()]);
+        let tx = Transaction::new(vec![b"in".to_vec()], vec![b"out".to_vec()])
+            .expect("Failed to create tx");
 
         // create a header with a placeholder merkle root
         let header = Header::new(1, 123, 0x207fffff, 42, [0u8; HASH_SIZE], [0u8; 32]);
@@ -135,8 +146,10 @@ mod tests {
 
     #[test]
     fn test_merkle_root_consistency() {
-        let tx1 = Transaction::new(vec![b"a".to_vec()], vec![b"b".to_vec()]);
-        let tx2 = Transaction::new(vec![b"c".to_vec()], vec![b"d".to_vec()]);
+        let tx1 = Transaction::new(vec![b"a".to_vec()], vec![b"b".to_vec()])
+            .expect("Failed to create tx1");
+        let tx2 = Transaction::new(vec![b"c".to_vec()], vec![b"d".to_vec()])
+            .expect("Failed to create tx2");
         let txs = vec![tx1.clone(), tx2.clone()];
 
         let root1 = compute_merkle_root(&txs);

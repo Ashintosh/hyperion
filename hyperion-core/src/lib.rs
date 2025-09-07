@@ -1,5 +1,6 @@
-mod crypto;
+mod error;
+mod consensus;
+pub mod crypto;
 mod utils;
-mod chain;
-mod tx;
-mod block;
+pub mod chain;
+pub mod block;

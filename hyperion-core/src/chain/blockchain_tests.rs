@@ -8,7 +8,7 @@ mod tests {
 
     /// Helper: create a simple transaction
     fn make_tx() -> Transaction {
-        Transaction::new(vec![b"in".to_vec()], vec![b"out".to_vec()])
+        Transaction::new(vec![b"in".to_vec()], vec![b"out".to_vec()]).expect("Failed to make new tx")
     }
 
     /// Helper: create a block with given previous hash
@@ -39,7 +39,7 @@ mod tests {
         let mut chain = Blockchain::new(genesis.clone());
 
         let block1 = make_block_single(genesis.double_sha256());
-        chain.add_block(block1.clone());
+        chain.add_block(block1.clone(), true).expect("Failed to add block to chain");
 
         assert_eq!(chain.len(), 2);
         assert_eq!(chain.latest_block().double_sha256(), block1.double_sha256());
@@ -52,7 +52,7 @@ mod tests {
         let mut chain = Blockchain::new(genesis.clone());
 
         let bad_block = make_block_single([1u8; HASH_SIZE]);
-        chain.add_block(bad_block); // should panic
+        chain.add_block(bad_block, true).expect("Rejected bad block"); // should panic
     }
 
     #[test]
@@ -63,7 +63,7 @@ mod tests {
         let expected_root = compute_merkle_root(&vec![tx1, tx2]);
 
         assert_eq!(compute_merkle_root(&block.transactions), expected_root);
-        assert!(block.validate_merkle_root());
+        assert!(block.validate_merkle_root().is_ok());
     }
 
     #[test]
@@ -88,18 +88,18 @@ mod tests {
         let mut chain = Blockchain::new(genesis.clone());
 
         let block1 = make_block_single(genesis.double_sha256());
-        chain.add_block(block1.clone());
+        chain.add_block(block1.clone(), true).expect("Failed adding block1 to chain");
 
         let block2 = make_block_single(block1.double_sha256());
-        chain.add_block(block2.clone());
+        chain.add_block(block2.clone(), true).expect("Failed adding block2 to chain");
 
         // get_block_by_height
-        assert_eq!(chain.get_block_by_height(0).unwrap().double_sha256(), genesis.double_sha256());
-        assert_eq!(chain.get_block_by_height(2).unwrap().double_sha256(), block2.double_sha256());
+        assert_eq!(chain.get_block_by_height(0).expect("Failed to get block1 by height").double_sha256(), genesis.double_sha256());
+        assert_eq!(chain.get_block_by_height(2).expect("Failed to get block2 by height").double_sha256(), block2.double_sha256());
         assert!(chain.get_block_by_height(3).is_none());
 
         // find_block
-        assert_eq!(chain.find_block(block1.double_sha256()).unwrap().double_sha256(), block1.double_sha256());
+        assert_eq!(chain.find_block(block1.double_sha256()).expect("Failed to find block1").double_sha256(), block1.double_sha256());
         assert!(chain.find_block([1u8; HASH_SIZE]).is_none());
 
         // iter and iter_rev
@@ -114,7 +114,7 @@ mod tests {
         let block = make_block([0u8; HASH_SIZE], vec![]);
         // Merkle root should be zero
         assert_eq!(compute_merkle_root(&block.transactions), [0u8; HASH_SIZE]);
-        assert!(block.validate_merkle_root());
+        assert!(block.validate_merkle_root().is_ok());
     }
 
     #[test]
@@ -123,7 +123,7 @@ mod tests {
         let mut chain = Blockchain::new(genesis.clone());
 
         let block1 = make_block_single(genesis.double_sha256());
-        chain.add_block(block1.clone());
+        chain.add_block(block1.clone(), true).expect("Failed to add block to chain");
 
         // validate skipping PoW
         assert!(chain.validate_with_options(true));
@@ -147,7 +147,7 @@ mod tests {
         let mut chain = Blockchain::new(genesis.clone());
 
         let block = make_block_single([1u8; HASH_SIZE]); // wrong prev_hash
-        chain.add_block(block); // should panic due to prev_hash mismatch
+        chain.add_block(block, true).expect("Prev hash invalid"); // should panic due to prev_hash mismatch
     }
 
     #[test]
@@ -202,14 +202,14 @@ mod tests {
         let txs: Vec<Transaction> = (0..7)
             .map(|i| {
                 let i_bytes = (i as u32).to_le_bytes().to_vec(); // u32 → [u8; 4] → Vec<u8>
-                Transaction::new(vec![i_bytes.clone()], vec![i_bytes]) // wrap in Vec<Vec<u8>>
+                Transaction::new(vec![i_bytes.clone()], vec![i_bytes]).expect("Failed to create new tx") // wrap in Vec<Vec<u8>>
             })
             .collect();
 
         let block = make_block([0u8; HASH_SIZE], txs.clone());
         let expected_root = compute_merkle_root(&txs);
         assert_eq!(block.header.merkle_root, expected_root);
-        assert!(block.validate_merkle_root());
+        assert!(block.validate_merkle_root().is_ok());
     }
 
     #[test]
@@ -230,7 +230,7 @@ mod tests {
         let mut chain = Blockchain::new(genesis.clone());
 
         let mut block1 = make_block_single(genesis.double_sha256());
-        chain.add_block(block1.clone());
+        chain.add_block(block1.clone(), true).expect("Failed to add block to chain");
 
         // Tamper with prev_hash after adding
         block1.header.prev_hash = [1u8; HASH_SIZE];
@@ -245,10 +245,10 @@ mod tests {
         let mut chain = Blockchain::new(genesis.clone());
 
         let block1 = make_block_single(genesis.double_sha256());
-        chain.add_block(block1.clone());
+        chain.add_block(block1.clone(), true).expect("Failed to add block1 to chain");
 
         let block2 = make_block_single(block1.double_sha256());
-        chain.add_block(block2.clone());
+        chain.add_block(block2.clone(), true).expect("Failed to add block2 to chain");
 
         let iter_hashes: Vec<_> = chain.iter().map(|b| b.double_sha256()).collect();
         let rev_iter_hashes: Vec<_> = chain.iter_rev().map(|b| b.double_sha256()).collect();

@@ -105,6 +105,13 @@ name = "hyperion-miner"
 version = "0.1.0"
 
 [[package]]
+name = "hyperion-node"
+version = "0.1.0"
+dependencies = [
+ "hyperion-core",
+]
+
+[[package]]
 name = "libc"
 version = "0.2.175"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -3,6 +3,11 @@ name = "hyperion-core"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+#ame = "hyperion_core"
+path = "src/lib.rs"
+crate-type = ["lib"]
+
 [dependencies]
 bincode = "2.0.1"
 hex = "0.4.3"

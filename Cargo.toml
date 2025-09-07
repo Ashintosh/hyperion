@@ -1,14 +1,14 @@
 [workspace]
-default-members = ["hyperion-core"]
+# default-members = ["hyperion-core"]
 members = [
     "hyperion-core",
     "hyperion-miner",
+    "hyperion-node",
 ]
 resolver = "2"
 
 [workspace.package]
 authors = ["Ashintosh <ash@opensrcit.com>"]
-edition = "2024"
 license = "GPL-3.0"
 repository = "https://github.com/Ashintosh/hyperion"
 rust-version = "1.89.0"

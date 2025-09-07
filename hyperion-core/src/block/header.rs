@@ -1,5 +1,6 @@
 use crate::block::Serializable;
 use crate::crypto::{HASH_SIZE, Hashable};
+use crate::error::header::HeaderError;
 
 use num_bigint::BigUint;
 use bincode::{Decode, Encode};
@@ -30,14 +31,15 @@ impl Header {
         Self { version, time, difficulty_compact, nonce, prev_hash, merkle_root }
     }
 
-    pub fn validate_pow(&self) -> bool {
-        let hash = BigUint::from_bytes_be(&self.double_sha256());  // treat hash as big-endian
-        let target = BigUint::from_bytes_be(&self.compact_to_target());
-        hash <= target
+    pub fn validate_pow(&self) -> Result<(), HeaderError> {
+        if !crate::consensus::validate_pow(self) {
+            return Err(HeaderError::InvalidPoW);
+        }
+        Ok(())
     }
 
     /// Convert compact difficulty to 256-bit target
-    fn compact_to_target(&self) -> [u8; HASH_SIZE] {
+    pub fn compact_to_target(&self) -> [u8; HASH_SIZE] {
         let exponent = (self.difficulty_compact >> 24) as u32;
         let mantissa = self.difficulty_compact & 0x007FFFFF; // Bitcoin caps highest bit
 
@@ -87,8 +89,8 @@ mod tests {
     #[test]
     fn test_roundtrip_serialization() {
         let h = Header::new(1, 1234567890, 0x1d00ffff, 42, [0u8; HASH_SIZE], [1u8; HASH_SIZE]);
-        let bytes = h.serialize().unwrap();
-        let decoded = Header::from_bytes(&bytes).unwrap();
+        let bytes = h.serialize().expect("Failed to serialize header bytes");
+        let decoded = Header::from_bytes(&bytes).expect("Failed to decode header from bytes");
         assert_eq!(h.double_sha256(), decoded.double_sha256());
     }
 
@@ -103,8 +105,8 @@ mod tests {
     #[test]
     fn test_serialization_edge_cases() {
         let h = Header::new(u32::MAX, 0, 0x1d00ffff, u64::MAX, [0xFF; HASH_SIZE], [0xAA; HASH_SIZE]);
-        let bytes = h.serialize().unwrap();
-        let decoded = Header::from_bytes(&bytes).unwrap();
+        let bytes = h.serialize().expect("Failed to serialize header bytes");
+        let decoded = Header::from_bytes(&bytes).expect("Failed to decode header from bytes");
         assert_eq!(h.double_sha256(), decoded.double_sha256());
     }
 
