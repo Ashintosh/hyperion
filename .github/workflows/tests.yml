@@ -1,0 +1,43 @@
+name: Test Hyperion Source
+
+on:
+  push:
+    branches: [ "main", "v[a-zA-Z0-9].[a-zA-Z0-9].[a-zA-Z0-9]" ]
+  pull_request:
+    branches: [ "main", "v[a-zA-Z0-9].[a-zA-Z0-9].[a-zA-Z0-9]" ]
+  release:
+    types: [ published ]
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Run tests on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ ubuntu-latest, windows-latest, macos-latest ]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install mold linker (Linux only)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt update
+          sudo apt install -y mold
+          echo RUSTFLAGS=-C link-arg=-fuse-ld=mold >> $GITHUB_ENV
+
+      - name: Run tests
+        run: cargo test --release --verbose
