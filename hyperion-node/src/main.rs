@@ -13,6 +13,8 @@ use hyperion_core::miner;
 use std::time::Duration;
 use tokio::time::sleep;
 use hex;
+use rand::{Rng, SeedableRng};
+use rand::rngs::StdRng;
 
 #[tokio::main]
 async fn main() {
@@ -29,11 +31,13 @@ async fn main() {
     let mut mempool = Mempool::load();
 
     // Add dummy transactions for testing
-    for i in 0..75 {
-        let tx = Transaction::new(
-            vec![format!("in{}", i).into_bytes()],
-            vec![format!("out{}", i).into_bytes()]
-        ).unwrap();
+    for i in 0..215 {
+        // let tx = Transaction::new(
+        //     vec![format!("in{}", i).into_bytes()],
+        //     vec![format!("out{}", i).into_bytes()]
+        // ).unwrap();
+
+        let tx = generate_random_tx(i);
         mempool.add_tx(tx);
     }
 
@@ -69,6 +73,25 @@ async fn main() {
         iteration += 1;
         sleep(Duration::from_millis(50)).await;
     }
+}
+
+fn generate_random_tx(seed: i32) -> Transaction {
+    let mut rng = StdRng::seed_from_u64(seed as u64);
+    
+    let num_inputs = rng.random_range(1..=3);
+    let num_outputs = rng.random_range(1..=3);
+
+    let mut inputs = Vec::new();
+    for i in 0..num_inputs {
+        inputs.push(format!("in{}_{}", i, rng.random::<u32>()).into_bytes());
+    }
+
+    let mut outputs = Vec::new();
+    for i in 0..num_outputs {
+        outputs.push(format!("out{}_{}", i, rng.random::<u32>()).into_bytes());
+    }
+
+    Transaction::new(inputs, outputs).unwrap()
 }
 
 fn print_block_details(block: &Block) {
