@@ -9,7 +9,7 @@ use bincode::{Decode, Encode};
 #[derive(Clone, Debug, Encode, Decode)]
 pub struct Header {
     pub version: u32,
-    time: u32,
+    pub time: u32,
     pub difficulty_compact: u32,
     pub nonce: u64,
     pub prev_hash: [u8; HASH_SIZE],
@@ -18,7 +18,7 @@ pub struct Header {
 
 impl Header {
     const EXPONENT_BIAS: u32 = 3;
-    const MANTISSA_MASK: u32 = 0x007FFFFF;
+    const MANTISSA_MASK: u32 = 0x007fffff;
 
     pub fn new(
         version: u32,
@@ -40,31 +40,10 @@ impl Header {
 
     /// Convert compact difficulty to 256-bit target
     pub fn compact_to_target(&self) -> [u8; HASH_SIZE] {
-        let exponent = (self.difficulty_compact >> 24) as u32;
-        let mantissa = self.difficulty_compact & 0x007FFFFF; // Bitcoin caps highest bit
-
-        let mut target = BigUint::from(mantissa);
-        if exponent > Self::EXPONENT_BIAS {
-            target <<= 8 * (exponent - Self::EXPONENT_BIAS);
-        } else if exponent < Self::EXPONENT_BIAS {
-            target >>= 8 * (Self::EXPONENT_BIAS - exponent);
-        }
-
-        let bytes = target.to_bytes_be();
-        let mut out = [0u8; HASH_SIZE];
-        let start = HASH_SIZE - bytes.len();
-        out[start..].copy_from_slice(&bytes);
-        out
+        crate::consensus::compact_to_target(self.difficulty_compact)
     }
 
-    #[cfg(test)]
-    pub fn fake_validate_pow(hash: [u8; HASH_SIZE], difficulty_compact: u32) -> bool {
-        let h = BigUint::from_bytes_be(&hash);
-        // fake Header only to call instance method
-        let dummy = Header::new(0, 0, difficulty_compact, 0, [0u8; HASH_SIZE], [0u8; HASH_SIZE]);
-        let target = BigUint::from_bytes_be(&dummy.compact_to_target());
-        h <= target
-    }
+    
 }
 
 impl Serializable for Header {}
@@ -84,6 +63,8 @@ impl std::fmt::Display for Header {
 
 #[cfg(test)]
 mod tests {
+    use crate::consensus;
+
     use super::*;
 
     #[test]
@@ -99,7 +80,7 @@ mod tests {
         let difficulty = 0x207fffff;
         let mut fake_hash = [0u8; HASH_SIZE];
         fake_hash[3] = 1;  // very small number
-        assert!(Header::fake_validate_pow(fake_hash, difficulty));
+        assert!(consensus::fake_validate_pow(fake_hash, difficulty));
     }
 
     #[test]

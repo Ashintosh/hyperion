@@ -1,12 +1,14 @@
-use std::collections::VecDeque;
-
-use crate::block::{Block, Transaction, Header};
+use crate::block::{Block, Header, Serializable, Transaction};
 use crate::block::block::compute_merkle_root;
 use crate::crypto::{Hashable, HASH_SIZE};
 use crate::error::blockchain::BlockchainError;
-use crate::consensus::{create_genesis_block, mine_block};
+use crate::consensus::{adjust_difficulty, create_genesis_block, mine_block};
+
+use std::collections::VecDeque;
+use bincode::{Encode, Decode};
 
 
+#[derive(Encode, Decode)]
 pub struct Blockchain {
     pub blocks: VecDeque<Block>,
 }
@@ -96,19 +98,35 @@ impl Blockchain {
         Block::new(header, transactions)
     }
 
-    pub fn create_and_mine_block(
-        &self,
+    pub fn mine_new_block(
+        chain: &Blockchain,
         transactions: Vec<Transaction>,
-        difficulty_compact: u32,
         timestamp: u32,
     ) -> Block {
-        let prev_hash = self.latest_block().double_sha256();
-        let merkle_root = compute_merkle_root(&transactions);
+        // Compute current difficulty
+        let difficulty = adjust_difficulty(chain);
 
-        let header = Header::new(1, timestamp, difficulty_compact, 0, prev_hash, merkle_root);
-        let mined_header = mine_block(header);
-        Block::new(mined_header, transactions)
+        let mut block = chain.create_block_template(transactions, difficulty, timestamp);
+
+        // Mine block (PoW)
+        crate::consensus::mine_block(&mut block.header);
+
+        block
     }
+
+    // pub fn create_and_mine_block(
+    //     &self,
+    //     transactions: Vec<Transaction>,
+    //     difficulty_compact: u32,
+    //     timestamp: u32,
+    // ) -> Block {
+    //     let prev_hash = self.latest_block().double_sha256();
+    //     let merkle_root = compute_merkle_root(&transactions);
+
+    //     let header = Header::new(1, timestamp, difficulty_compact, 0, prev_hash, merkle_root);
+    //     let mined_header = mine_block(header);
+    //     Block::new(mined_header, transactions)
+    // }
 
     /// Get block by height/index
     pub fn get_block_by_height(&self, height: usize) -> Option<&Block> {
@@ -138,3 +156,5 @@ impl Blockchain {
         self.blocks.iter().rev()
     }
 }
+
+impl Serializable for Blockchain {}

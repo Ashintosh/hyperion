@@ -10,8 +10,8 @@ pub type OutputData = Vec<u8>;
 
 #[derive(Encode, Decode, Clone)]
 pub struct Transaction {
-    inputs: Vec<InputData>,
-    outputs: Vec<OutputData>,
+    pub inputs: Vec<InputData>,
+    pub outputs: Vec<OutputData>,
 }
 
 impl Transaction {

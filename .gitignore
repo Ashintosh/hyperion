@@ -23,4 +23,6 @@ target
 .cargo
 .vscode
 
+# Blockchain files
+*.dat
 
