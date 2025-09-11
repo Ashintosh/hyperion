@@ -102,12 +102,13 @@ impl SoloMiner {
                         println!("Block found by worker {}!", mining_result.worker_id);
                         
                         // Set solution found flag to prevent other workers from submitting
+                        // TODO: Figure out why this is not working on new chain and causing rejected blocks
                         self.solution_found.store(true, std::sync::atomic::Ordering::SeqCst);
 
-                        // IMMEDIATELY CANCEL ALL WORK
+                        // Cancel other workers
                         if let Some(ref cancel_tx) = *self.cancel_tx.borrow() {
                             let _ = cancel_tx.send(true);
-                            debug!("🛑 Cancelled all current work");
+                            debug!("Cancelled all current work");
                         }
 
                         if let Err(e) = self.node_client.submit_block(mining_result.block).await {
@@ -120,8 +121,8 @@ impl SoloMiner {
                         // Small delay to ensure other workers stop
                         tokio::time::sleep(Duration::from_millis(10)).await;
                         
-                        // RESTART: Get fresh work
-                        info!("🔄 Restarting mining with fresh work...");
+                        // Get fresh work
+                        info!("Restarting mining with fresh work...");
                         match self.get_and_distribute_work(&work_senders).await {
                             Ok(()) => {
                                 info!("All workers restarted with new work");
@@ -134,8 +135,8 @@ impl SoloMiner {
                     }
                 }
                 
-                _ = sleep(Duration::from_secs(30)) => { // Changed from work_update_interval
-                    if last_template_time.elapsed() > Duration::from_secs(60) { // Much longer threshold
+                _ = sleep(Duration::from_secs(30)) => { 
+                    if last_template_time.elapsed() > Duration::from_secs(60) { 
                         info!("Work is very stale, getting fresh template...");
                         match self.get_and_distribute_work(&work_senders).await {
                             Ok(()) => {
@@ -240,7 +241,7 @@ impl SoloMiner {
         let blocks_found = stats.blocks_found.load(std::sync::atomic::Ordering::SeqCst);
         let uptime = stats.start_time.elapsed();
 
-        info!(
+        println!(
             "Mining Stats - Hashrate: {:.2} H/s, Blocks: {}, Uptime: {:?}",
             hashrate, blocks_found, uptime
         );

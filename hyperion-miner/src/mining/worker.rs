@@ -80,7 +80,7 @@ impl MiningWorker {
         let start_nonce = work.nonce_start;
         let end_nonce = start_nonce + work.nonce_range;
         let work_id = work.work_id;
-        let mut cancel_rx = work.cancel_rx;
+        let cancel_rx = work.cancel_rx;
 
         println!(
             "Worker {} mining nonce range {} to {}",
@@ -159,8 +159,8 @@ impl MiningWorker {
         self.running.store(true, Ordering::SeqCst);
     }
 
-    pub fn get_hashrate(&self, duration_secs: f64) -> f64 {
-        let hashes = self.hashes_computed.load(Ordering::SeqCst) as f64;
-        hashes / duration_secs
-    }
+    // pub fn get_hashrate(&self, duration_secs: f64) -> f64 {
+    //     let hashes = self.hashes_computed.load(Ordering::SeqCst) as f64;
+    //     hashes / duration_secs
+    // }
 }
