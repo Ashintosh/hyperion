@@ -1,6 +1,6 @@
 use std::fs;
 use hyperion_core::chain::blockchain::Blockchain;
-use hyperion_core::block::{Block, Serializable};
+use hyperion_core::block::Serializable;
 
 pub fn save_chain(chain: &Blockchain) -> std::io::Result<()> {
     let bytes = chain.serialize().unwrap();

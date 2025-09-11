@@ -8,13 +8,10 @@ use mempool::Mempool;
 use rpc::{NodeState, start_server};
 
 use hyperion_core::chain::blockchain::Blockchain;
-use hyperion_core::block::{Block, Transaction};
+use hyperion_core::block::Transaction;
 use hyperion_core::crypto::Hashable;
-use hyperion_core::miner;
 
-use std::time::Duration;
 use std::sync::Arc;
-use tokio::time::sleep;
 use tokio::sync::RwLock;
 use hex;
 use rand::{Rng, SeedableRng};
@@ -94,22 +91,22 @@ fn generate_random_tx(seed: i32) -> Transaction {
     Transaction::new(inputs, outputs).unwrap()
 }
 
-fn print_block_details(block: &Block) {
-    println!("===== Block Details =====");
-    println!("Block Hash: {}", hex::encode(block.double_sha256()));
+// fn print_block_details(block: &Block) {
+//     println!("===== Block Details =====");
+//     println!("Block Hash: {}", hex::encode(block.double_sha256()));
 
-    let header = &block.header;
-    println!("Version: {}", header.version);
-    println!("Timestamp: {}", header.time);
-    println!("Difficulty (compact): 0x{:08x}", header.difficulty_compact);
-    println!("Nonce: {}", header.nonce);
-    println!("Previous Hash: {}", hex::encode(header.prev_hash));
-    println!("Merkle Root: {}", hex::encode(header.merkle_root));
+//     let header = &block.header;
+//     println!("Version: {}", header.version);
+//     println!("Timestamp: {}", header.time);
+//     println!("Difficulty (compact): 0x{:08x}", header.difficulty_compact);
+//     println!("Nonce: {}", header.nonce);
+//     println!("Previous Hash: {}", hex::encode(header.prev_hash));
+//     println!("Merkle Root: {}", hex::encode(header.merkle_root));
 
-    println!("Transactions: ({})", block.transactions.len());
-    for (i, tx) in block.transactions.iter().enumerate() {
-        println!("  Tx {}: inputs = {:?}, outputs = {:?}", i, tx.inputs, tx.outputs);
-    }
+//     println!("Transactions: ({})", block.transactions.len());
+//     for (i, tx) in block.transactions.iter().enumerate() {
+//         println!("  Tx {}: inputs = {:?}, outputs = {:?}", i, tx.inputs, tx.outputs);
+//     }
 
-    println!("=========================");
-}
+//     println!("=========================");
+// }

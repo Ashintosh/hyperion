@@ -2,7 +2,7 @@ use crate::block::{Block, Header, Serializable, Transaction};
 use crate::block::block::compute_merkle_root;
 use crate::crypto::{Hashable, HASH_SIZE};
 use crate::error::blockchain::BlockchainError;
-use crate::consensus::{adjust_difficulty, create_genesis_block, mine_block};
+use crate::consensus::{adjust_difficulty, create_genesis_block};
 
 use std::collections::VecDeque;
 use bincode::{Encode, Decode};

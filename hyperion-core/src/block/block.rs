@@ -1,6 +1,6 @@
 use crate::block::{Header, Serializable, Transaction};
 use crate::crypto::{HASH_SIZE, Hashable, double_sha256};
-use crate::consensus::validate_pow;
+//use crate::consensus::validate_pow;
 use crate::error::block::BlockError;
 
 use bincode::{Decode, Encode};
@@ -23,9 +23,9 @@ impl Block {
     /// Validate block (simplified)
     /// - PoW is valid
     /// - Merkle root matches tx list (stub for now)
-    fn validate(&self) -> bool {
-        validate_pow(&self.header) && self.validate_merkle_root().is_ok()
-    }
+    // fn validate(&self) -> bool {
+    //     validate_pow(&self.header) && self.validate_merkle_root().is_ok()
+    // }
 
     /// Validate merkle root against transactions
     pub fn validate_merkle_root(&self) -> Result<(), BlockError> {

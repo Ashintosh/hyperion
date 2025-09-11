@@ -2,7 +2,6 @@ use crate::block::Serializable;
 use crate::crypto::{HASH_SIZE, Hashable};
 use crate::error::header::HeaderError;
 
-use num_bigint::BigUint;
 use bincode::{Decode, Encode};
 
 
@@ -17,8 +16,8 @@ pub struct Header {
 }
 
 impl Header {
-    const EXPONENT_BIAS: u32 = 3;
-    const MANTISSA_MASK: u32 = 0x007fffff;
+    //const EXPONENT_BIAS: u32 = 3;
+    //const MANTISSA_MASK: u32 = 0x007fffff;
 
     pub fn new(
         version: u32,
@@ -102,8 +101,8 @@ mod tests {
         let target = Header::new(0, 0, h.difficulty_compact, 0, [0u8; HASH_SIZE], [0u8; HASH_SIZE])
             .compact_to_target();
 
-        let fake_hash_num = BigUint::from_bytes_be(&fake_hash);
-        let target_num = BigUint::from_bytes_be(&target);
+        let fake_hash_num = num_bigint::BigUint::from_bytes_be(&fake_hash);
+        let target_num = num_bigint::BigUint::from_bytes_be(&target);
 
         // Big hash should be greater than target
         assert!(fake_hash_num > target_num);
@@ -141,8 +140,8 @@ mod tests {
         // "Hard" difficulty → small numeric target
         let hard = Header::new(1, 0, 0x01000000, 0, [0; HASH_SIZE], [0; HASH_SIZE]);
 
-        let easy_num = BigUint::from_bytes_be(&easy.compact_to_target());
-        let hard_num = BigUint::from_bytes_be(&hard.compact_to_target());
+        let easy_num = num_bigint::BigUint::from_bytes_be(&easy.compact_to_target());
+        let hard_num = num_bigint::BigUint::from_bytes_be(&hard.compact_to_target());
 
         // Easy target must be bigger than hard target
         assert!(easy_num > hard_num);

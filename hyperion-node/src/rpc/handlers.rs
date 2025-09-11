@@ -8,11 +8,10 @@ use hyperion_core::chain::blockchain::Blockchain;
 use hyperion_core::consensus::adjust_difficulty;
 use hyperion_core::crypto::Hashable;
 
-use std::ops::Deref;
 use std::sync::Arc;
 use axum::extract::State;
 use tokio::sync::RwLock;
-use tracing::{error, info, warn};
+use tracing::{info, warn};
 
 #[derive(Clone)]
 pub struct NodeState {

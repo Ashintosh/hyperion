@@ -9,7 +9,7 @@ use axum::{
 };
 use serde_json::Value;
 use tower_http::cors::CorsLayer;
-use tracing::{debug, error};
+use tracing::debug;
 
 pub fn create_router(state: NodeState) -> Router {
     Router::new()

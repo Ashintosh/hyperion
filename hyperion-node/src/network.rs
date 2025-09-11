@@ -2,7 +2,7 @@ use hyperion_core::block::{Block, Serializable};
 use hyperion_core::crypto::Hashable;
 
 use tokio::net::{TcpListener, TcpStream};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncReadExt;
 
 pub async fn start_network_listener(addr: &str) {
     let listener = TcpListener::bind(addr).await.unwrap();

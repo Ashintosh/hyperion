@@ -261,7 +261,7 @@ impl SoloMiner {
     
     fn restart_all_workers(&self) {
         for worker in &self.workers {
-            worker.restart(); // You'll need to implement this
+            worker.restart();
         }
     }
 }
