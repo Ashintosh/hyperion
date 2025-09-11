@@ -97,7 +97,7 @@ log_level = "info"
 
 > NOTE: The miner is in a very basic form, and may not be fully configurable.
 
-## 🔧 API Reference
+## API Reference
 
 ### RPC Endpoints
 
