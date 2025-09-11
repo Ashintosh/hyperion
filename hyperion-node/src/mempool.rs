@@ -1,4 +1,4 @@
-use hyperion_core::block::Transaction;
+use hyperion_core::{block::Transaction, crypto::Hashable};
 
 pub struct Mempool {
     pub txs: Vec<Transaction>,
@@ -13,6 +13,13 @@ impl Mempool {
         self.txs.push(tx);
     }
 
+    pub fn remove_tx(&mut self, tx_to_remove: &Transaction) {
+        let target_hash = tx_to_remove.double_sha256();
+        self.txs.retain(|existing_tx| {
+            existing_tx.double_sha256() != target_hash
+        });
+    }
+
     pub fn is_empty(&self) -> bool {
         self.txs.is_empty()
     }
@@ -25,6 +32,10 @@ impl Mempool {
         let count = n.min(self.txs.len());
         let txs: Vec<_> = self.txs.drain(..count).collect();
         Some(txs)
+    }
+
+    pub fn len(&self) -> usize {
+        self.txs.len()
     }
 
     /// Persist/load mempool

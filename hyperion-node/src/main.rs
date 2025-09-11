@@ -2,8 +2,10 @@ mod utils;
 mod network;
 mod storage;
 mod mempool;
+mod rpc;
 
 use mempool::Mempool;
+use rpc::{NodeState, start_server};
 
 use hyperion_core::chain::blockchain::Blockchain;
 use hyperion_core::block::{Block, Transaction};
@@ -11,7 +13,9 @@ use hyperion_core::crypto::Hashable;
 use hyperion_core::miner;
 
 use std::time::Duration;
+use std::sync::Arc;
 use tokio::time::sleep;
+use tokio::sync::RwLock;
 use hex;
 use rand::{Rng, SeedableRng};
 use rand::rngs::StdRng;
@@ -19,60 +23,56 @@ use rand::rngs::StdRng;
 #[tokio::main]
 async fn main() {
     println!("Starting Hyperion Node...");
-
-    // Load blockchain from disk or create genesis
-    let mut chain = storage::load_chain().unwrap_or_else(|_| Blockchain::new_with_genesis());
+    
+    // Initialize tracing
+    tracing_subscriber::fmt::init();
+    
+    // Load blockchain and mempool (wrap in Arc<RwLock>)
+    let chain = Arc::new(RwLock::new(
+        storage::load_chain().unwrap_or_else(|_| Blockchain::new_with_genesis())
+    ));
+    let mempool = Arc::new(RwLock::new(Mempool::load()));
 
     println!("Genesis Block Hash: {}", hex::encode(
-        chain.get_block_by_height(0).unwrap().double_sha256()
+        chain.read().await.get_block_by_height(0).unwrap().double_sha256()
     ));
 
-    // Load mempool
-    let mut mempool = Mempool::load();
-
-    // Add dummy transactions for testing
-    for i in 0..215 {
-        // let tx = Transaction::new(
-        //     vec![format!("in{}", i).into_bytes()],
-        //     vec![format!("out{}", i).into_bytes()]
-        // ).unwrap();
-
-        let tx = generate_random_tx(i);
-        mempool.add_tx(tx);
+    // Add test transactions
+    {
+        let mut mempool_guard = mempool.write().await;
+        for i in 0..215 {
+            let tx = generate_random_tx(i);
+            mempool_guard.add_tx(tx);
+        }
     }
+
+    // Start RPC server
+    let rpc_state = NodeState {
+        chain: chain.clone(),
+        mempool: mempool.clone(),
+    };
+    
+    tokio::spawn(async move {
+        if let Err(e) = start_server(rpc_state, 6001).await {
+            eprintln!("RPC server error: {}", e);
+        }
+    });
 
     // Start network listener asynchronously
     tokio::spawn(async move {
-        network::start_network_listener("127.0.0.1:6000").await;
+        network::start_network_listener("127.0.0.1:6000").await; // Changed port to 6000
     });
 
-    // Main mining loop
-    let mut iteration = 0;
-    loop {
-        if mempool.is_empty() {
-            println!("Mempool empty. Waiting for transactions...");
-            sleep(Duration::from_millis(100)).await;
-            continue;
-        }
+    // Keep the program running
+    println!("Node is running. RPC server on port 6001, Network listener on port 6000");
+    println!("Press Ctrl+C to stop");
+    
+    // Wait for Ctrl+C
+    tokio::signal::ctrl_c().await.expect("Failed to listen for ctrl+c");
+    println!("Shutting down...");
 
-        println!("Iteration: {}", iteration);
-
-        if let Some(tx_batch) = mempool.get_next_transaction(5) {
-            // Mine a new block with difficulty adjustment
-            let block = miner::mine_new_block(&chain, tx_batch, utils::current_timestamp());
-
-            if chain.add_block(block.clone(), false).is_ok() {
-                println!("Mined new block: {}", hex::encode(block.double_sha256()));
-                print_block_details(&block);
-
-                // Save blockchain
-                storage::save_chain(&chain).unwrap();
-            }
-        }
-
-        iteration += 1;
-        sleep(Duration::from_millis(50)).await;
-    }
+    storage::save_chain(&*chain.read().await)
+        .expect("Failed to save blockchain to disk");
 }
 
 fn generate_random_tx(seed: i32) -> Transaction {

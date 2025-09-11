@@ -10,7 +10,7 @@ use num_bigint::BigUint;
 pub const TARGET_BLOCK_TIME: u32 = 600;
 
 /// Difficulty adjustment interval in block
-pub const ADJUSTMENT_INTERVAL: usize = 10;
+pub const ADJUSTMENT_INTERVAL: usize = 3;
 
 const EXPONENT_BIAS: u32 = 3;
 const MANTISSA_MASK: u32 = 0x007fffff;

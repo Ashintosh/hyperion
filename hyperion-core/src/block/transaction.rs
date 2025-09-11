@@ -3,12 +3,13 @@ use crate::crypto::Hashable;
 use crate::error::transaction::TransactionError;
 
 use bincode::{Encode, Decode};
+use serde::{Serialize, Deserialize};
 
 
 pub type InputData = Vec<u8>;
 pub type OutputData = Vec<u8>;
 
-#[derive(Encode, Decode, Clone)]
+#[derive(Debug, Encode, Decode, Clone, Serialize, Deserialize)]
 pub struct Transaction {
     pub inputs: Vec<InputData>,
     pub outputs: Vec<OutputData>,
@@ -45,7 +46,8 @@ impl std::fmt::Display for Transaction {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    //use super::*;
+    use super::{Transaction, Hashable, Serializable};
 
     #[test]
     fn test_transaction_hash_deterministic() {

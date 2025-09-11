@@ -32,12 +32,14 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Install mold linker (Linux only)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt update
-          sudo apt install -y mold
-          echo RUSTFLAGS=-C link-arg=-fuse-ld=mold >> $GITHUB_ENV
+      # Mold linker removed until *really* needed
+      # - name: Install mold linker (Linux only)
+      #   if: runner.os == 'Linux'
+      #   run: |
+      #     sudo apt update
+      #     sudo apt install -y mold
+      #     echo RUSTFLAGS=-C link-arg=-fuse-ld=mold >> $GITHUB_ENV
 
       - name: Run tests
         run: cargo test --release --verbose
+        
