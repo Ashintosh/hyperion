@@ -6,8 +6,6 @@ use tokio::io::AsyncReadExt;
 
 pub async fn start_network_listener(addr: &str) {
     let listener = TcpListener::bind(addr).await.unwrap();
-    println!("Listening on {}", addr);
-
     loop {
         let (socket, _) = listener.accept().await.unwrap();
         tokio::spawn(handle_client(socket));

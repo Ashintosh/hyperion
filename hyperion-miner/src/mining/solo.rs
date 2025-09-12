@@ -2,9 +2,10 @@ use super::worker::{MiningWorker, WorkItem, MiningResult};
 use crate::config::MiningConfig;
 use crate::network::NodeClient;
 use crate::utils::stats::MiningStats;
+
 use anyhow::Result;
 use hyperion_core::block::Header;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::cell::RefCell;
 use std::time::{Duration, Instant};
@@ -15,6 +16,7 @@ use tracing::{debug, error, info, warn};
 pub struct SoloMiner {
     config: MiningConfig,
     node_client: NodeClient,
+    node_connected: Arc<std::sync::atomic::AtomicBool>,
     workers: Vec<MiningWorker>,
     stats: MiningStats,
     running: Arc<std::sync::atomic::AtomicBool>,
@@ -28,17 +30,23 @@ impl SoloMiner {
         let node_client = NodeClient::new(config.node_url.clone());
         
         // Test connection to node
-        node_client.test_connection().await?;
+        //node_client.test_connection().await?;
+
+        let node_connected = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        if let Ok(()) = node_client.test_connection().await {
+            node_connected.store(true, std::sync::atomic::Ordering::SeqCst);
+        }
 
         // Create workers
         let mut workers = Vec::new();
         for i in 0..config.threads {
-            workers.push(MiningWorker::new(i));
+            workers.push(MiningWorker::new(i, node_connected.clone()));
         }
 
         Ok(Self {
             config,
             node_client,
+            node_connected,
             workers,
             stats: MiningStats::new(),
             running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
@@ -51,6 +59,28 @@ impl SoloMiner {
     pub async fn start_mining(&mut self) -> Result<()> {
         self.running.store(true, std::sync::atomic::Ordering::SeqCst);
         info!("Starting solo mining with {} threads", self.config.threads);
+
+        let node_connected = self.node_connected.clone();
+        let cancel_tx_clone = self.cancel_tx.clone();
+        let node_client = self.node_client.clone();
+
+        tokio::spawn(async move {
+            loop {
+                match node_client.test_connection().await {
+                    Ok(_) => {
+                        node_connected.store(true, Ordering::SeqCst);
+                    },
+                    Err(_) => {
+                        warn!("Mining paused: Node offline");
+                        node_connected.store(false, Ordering::SeqCst);
+                        if let Some(ref tx) = *cancel_tx_clone.borrow() {
+                            let _ = tx.send(true);
+                        }
+                    }
+                }
+                tokio::time::sleep(Duration::from_secs(5)).await;
+            }
+        });
 
         // Create channels for work distribution
         let (result_tx, mut result_rx) = mpsc::channel(10);
@@ -76,6 +106,7 @@ impl SoloMiner {
         drop(result_tx);
 
         // Start stats reporting task
+        let node_connected = self.node_connected.clone();
         let stats_handle = {
             let stats = self.stats.clone();
             let workers = self.workers.clone();
@@ -85,7 +116,12 @@ impl SoloMiner {
                 let mut stats_timer = tokio::time::interval(Duration::from_secs(interval));
                 loop {
                     stats_timer.tick().await;
-                    Self::report_stats(&stats, &workers).await;
+
+                    if node_connected.load(Ordering::SeqCst) {
+                        Self::report_stats(&stats, &workers).await;
+                    } else {
+                        debug!("Stats paused: node offline");
+                    }
                 }
             })
         };
@@ -99,7 +135,7 @@ impl SoloMiner {
                 // Check for mining results
                 result = result_rx.recv() => {
                     if let Some(mining_result) = result {
-                        println!("Block found by worker {}!", mining_result.worker_id);
+                        info!("Block found by worker {}!", mining_result.worker_id);
                         
                         // Set solution found flag to prevent other workers from submitting
                         // TODO: Figure out why this is not working on new chain and causing rejected blocks
@@ -112,24 +148,24 @@ impl SoloMiner {
                         }
 
                         if let Err(e) = self.node_client.submit_block(mining_result.block).await {
-                            println!("Failed to submit block: {}", e);
+                            error!("Failed to submit block: {}", e);
                         } else {
                             self.stats.blocks_found.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                            println!("Block submitted successfully!");
+                            debug!("Block submitted successfully!");
                         }
                         
                         // Small delay to ensure other workers stop
                         tokio::time::sleep(Duration::from_millis(10)).await;
                         
                         // Get fresh work
-                        info!("Restarting mining with fresh work...");
+                        debug!("Restarting mining with fresh work...");
                         match self.get_and_distribute_work(&work_senders).await {
                             Ok(()) => {
-                                info!("All workers restarted with new work");
+                                debug!("All workers restarted with new work");
                                 last_template_time = Instant::now();
                             }
                             Err(e) => {
-                                warn!("Failed to restart workers with new work: {}", e);
+                                error!("Failed to restart workers with new work: {}", e);
                             }
                         }
                     }
@@ -137,14 +173,14 @@ impl SoloMiner {
                 
                 _ = sleep(Duration::from_secs(30)) => { 
                     if last_template_time.elapsed() > Duration::from_secs(60) { 
-                        info!("Work is very stale, getting fresh template...");
+                        debug!("Work is very stale, getting fresh template...");
                         match self.get_and_distribute_work(&work_senders).await {
                             Ok(()) => {
                                 last_template_time = Instant::now();
                                 debug!("Updated stale work");
                             }
                             Err(e) => {
-                                warn!("Failed to get fresh work: {}", e);
+                                error!("Failed to get fresh work: {}", e);
                                 sleep(Duration::from_secs(self.config.reconnect_delay)).await;
                             }
                         }
@@ -223,11 +259,11 @@ impl SoloMiner {
             };
 
             if sender.send(work_item).await.is_err() {
-                println!("Failed to send work to worker {}", i);
+                error!("Failed to send work to worker {}", i);
             }
         }
 
-        println!("Distributed work ID {} to {} workers", work_id, work_senders.len());
+        debug!("Distributed work ID {} to {} workers", work_id, work_senders.len());
         Ok(())
     }
 
@@ -237,12 +273,12 @@ impl SoloMiner {
             .map(|w| w.hashes_computed.load(std::sync::atomic::Ordering::SeqCst))
             .sum();
 
-        let hashrate = stats.calculate_hashrate(total_hashes);
+        let hashrate = stats.format_hashrate(stats.calculate_hashrate(total_hashes));
         let blocks_found = stats.blocks_found.load(std::sync::atomic::Ordering::SeqCst);
-        let uptime = stats.start_time.elapsed();
+        let uptime = stats.start_time.elapsed().as_secs_f64();
 
-        println!(
-            "Mining Stats - Hashrate: {:.2} H/s, Blocks: {}, Uptime: {:?}",
+        info!(
+            "Hashrate: {}, Blocks: {}, Uptime: {:.2} s",
             hashrate, blocks_found, uptime
         );
     }

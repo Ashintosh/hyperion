@@ -3,7 +3,7 @@ use hyperion_core::consensus::mine_block;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::{mpsc, watch};
-use tracing::{debug, info};
+use tracing::{debug, info, error};
 
 
 #[derive(Clone)]
@@ -29,15 +29,17 @@ pub struct MiningWorker {
     pub running: Arc<AtomicBool>,
     pub hashes_computed: Arc<AtomicU64>,
     pub current_work_id: Arc<AtomicU64>,
+    pub node_connected: Arc<AtomicBool>,
 }
 
 impl MiningWorker {
-    pub fn new(id: usize) -> Self {
+    pub fn new(id: usize, node_connected: Arc<AtomicBool>) -> Self {
         Self {
             id,
             running: Arc::new(AtomicBool::new(false)),
             hashes_computed: Arc::new(AtomicU64::new(0)),
             current_work_id: Arc::new(AtomicU64::new(0)),
+            node_connected,
         }
     }
 
@@ -47,7 +49,7 @@ impl MiningWorker {
         result_tx: mpsc::Sender<MiningResult>,
     ) {
         self.running.store(true, Ordering::SeqCst);
-        println!("Mining worker {} started", self.id);
+        debug!("Mining worker {} started", self.id);
 
         while self.running.load(Ordering::SeqCst) {
             tokio::select! {
@@ -58,7 +60,7 @@ impl MiningWorker {
 
                             if let Some(result) = self.mine_work(work).await {
                                 if result_tx.send(result).await.is_err() {
-                                    println!("Failed to send mining result");
+                                    error!("Failed to send mining result");
                                     break;
                                 }
                             }
@@ -72,7 +74,7 @@ impl MiningWorker {
             }
         }
 
-        println!("Mining worker {} stopped", self.id);
+        debug!("Mining worker {} stopped", self.id);
     }
 
     pub async fn mine_work(&self, work: WorkItem) -> Option<MiningResult> {
@@ -82,7 +84,7 @@ impl MiningWorker {
         let work_id = work.work_id;
         let cancel_rx = work.cancel_rx;
 
-        println!(
+        debug!(
             "Worker {} mining nonce range {} to {}",
             self.id, start_nonce, end_nonce
         );
@@ -90,17 +92,26 @@ impl MiningWorker {
         const BATCH_SIZE: u64 = 10000;
         
         for batch_start in (start_nonce..end_nonce).step_by(BATCH_SIZE as usize) {
+            // println!("BATCH: {}", batch_start);
+            // println!("STATUS: {}", self.node_connected.load(Ordering::SeqCst));
+
+            // Pause if node if offline
+            while !self.node_connected.load(Ordering::SeqCst) {
+                debug!("Worker {} paused (node offline)", self.id);
+                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            }
+
             // Check if we should continue with this work
             if !self.running.load(Ordering::SeqCst)
                 || *cancel_rx.borrow()
                 || work.solution_found.load(Ordering::SeqCst) {
-                println!("Worker {} work cancelled or stopped", self.id);
+                debug!("Worker {} work cancelled or stopped", self.id);
                 return None;
             }
 
             // Check if work is stale (new work arrived)
             if self.current_work_id.load(Ordering::SeqCst) != work_id {
-                println!("Worker {} abandoning state work ID {}", self.id, work_id);
+                debug!("Worker {} abandoning state work ID {}", self.id, work_id);
                 return None;
             }
 
@@ -112,11 +123,11 @@ impl MiningWorker {
                 if header.validate_pow().is_ok() {
                     // Double-check cancellation before submitting result
                     if *cancel_rx.borrow() {
-                        println!("Work cancelled just before solution submission");
+                        debug!("Work cancelled just before solution submission");
                         return None;
                     }
 
-                    println!("Worker {} found solution! Nonce: {}", self.id, nonce);
+                    debug!("Worker {} found solution! Nonce: {}", self.id, nonce);
                     
                     // Create the complete block with transactions
                     let block = Block::new(header, work.transactions.clone());
@@ -134,7 +145,7 @@ impl MiningWorker {
             // Check for cancellation between batches
             if cancel_rx.has_changed().unwrap_or(false) {
                 if *cancel_rx.borrow() {
-                    println!("Worker {} work cancelled mid-batch", self.id);
+                    debug!("Worker {} work cancelled mid-batch", self.id);
                     return None;
                 }
             }

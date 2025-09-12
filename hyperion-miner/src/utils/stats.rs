@@ -36,4 +36,20 @@ impl MiningStats {
             0.0
         }
     }
+
+    pub fn format_hashrate(&self, h: f64) -> String {
+        let units = ["H/s", "KH/s", "MH/s", "GH/s", "TH/s", "PH/s"];
+        let mut value = h;
+        let mut unit = &units[0];
+
+        for u in &units {
+            unit = u;
+            if value < 1000.0 {
+                break;
+            }
+            value /= 1000.0;
+        }
+
+        format!("{:.2} {}", value, unit)
+    }
 }

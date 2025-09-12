@@ -24,7 +24,7 @@ impl NodeClient {
     }
 
     pub async fn get_block_template(&self) -> Result<BlockTemplate> {
-        println!("Requesting block template from node");
+        debug!("Requesting block template from node");
 
         let request = RpcRequest {
             jsonrpc: "2.0".to_string(),
@@ -56,7 +56,7 @@ impl NodeClient {
     }
 
     pub async fn submit_block(&self, block: Block) -> Result<bool> {
-        println!("Submitting mined block to node");
+        debug!("Submitting mined block to node");
 
         // Serialize block to hex
         let block_bytes = block.serialize().unwrap();  // TODO: Remove unwrap
@@ -85,15 +85,15 @@ impl NodeClient {
         let rpc_response: RpcResponse<SubmitBlockResponse> = response.json().await?;
 
         if let Some(error) = rpc_response.error {
-            println!("Block submission failed: {}", error.message);
+            error!("Block submission failed: {}", error.message);
             return Ok(false);
         }
 
         if let Some(result) = rpc_response.result {
             if result.accepted {
-                println!("Block accepted by node!");
+                debug!("Block accepted by node!");
             } else {
-                println!("Block rejected: {}", result.message.unwrap());
+                error!("Block rejected: {}", result.message.unwrap());
             }
             Ok(result.accepted)
         } else {
@@ -129,7 +129,17 @@ impl NodeClient {
     pub async fn test_connection(&self) -> Result<()> {
         debug!("Testing connection to node");
         self.get_mining_info().await?;
-        info!("Successfully connected to node");
+        //info!("Successfully connected to node");
         Ok(())
+    }
+}
+
+impl Clone for NodeClient {
+    fn clone(&self) -> Self {
+        Self {
+            client: self.client.clone(),
+            base_url: self.base_url.clone(),
+            request_id: AtomicU32::new(self.request_id.load(Ordering::SeqCst)),
+        }
     }
 }

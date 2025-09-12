@@ -138,9 +138,8 @@ pub async fn handle_rpc(
 
 pub async fn start_server(state: NodeState, port: u16) -> Result<(), Box<dyn std::error::Error>> {
     let app = create_router(state);
-
     let listener = tokio::net::TcpListener::bind(format!("127.0.0.1:{}", port)).await?;
-    println!("RPC server listening on http://127.0.0.1:{}", port);
+    //println!("RPC server listening on http://127.0.0.1:{}", port);
 
     axum::serve(listener, app).await?;
     Ok(())

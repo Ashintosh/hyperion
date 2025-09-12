@@ -1,6 +1,0 @@
-node_url = "http://127.0.0.1:45154"
-threads = 16
-reconnect_delay = 5
-work_update_interval = 1000
-stats_interval = 30
-log_level = "info"

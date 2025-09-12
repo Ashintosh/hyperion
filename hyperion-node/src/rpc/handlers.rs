@@ -11,7 +11,7 @@ use hyperion_core::crypto::Hashable;
 use std::sync::Arc;
 use axum::extract::State;
 use tokio::sync::RwLock;
-use tracing::{info, warn};
+use tracing::{debug, info, warn, error, instrument};
 
 #[derive(Clone)]
 pub struct NodeState {
@@ -19,6 +19,7 @@ pub struct NodeState {
     pub mempool: Arc<RwLock<Mempool>>,
 }
 
+#[instrument(skip(state), fields(height))]
 pub async fn get_block_template(
     State(state): State<NodeState>,
     _params: Option<serde_json::Value>,
@@ -26,18 +27,15 @@ pub async fn get_block_template(
     let chain = state.chain.read().await;
     let mut mempool = state.mempool.write().await;
 
-    // Get pending transactions
-    let transactions = mempool.get_next_transaction(100)
-        .unwrap_or_default();
-
+    let transactions = mempool.get_next_transaction(100).unwrap_or_default();
     let latest_block = chain.latest_block();
     let difficulty = adjust_difficulty(&chain);
-    let height = chain.len() as u64;
     let merkle_root = hyperion_core::block::block::compute_merkle_root(&transactions);
 
-    info!("Providing block template for height {}", height);
+    let height = chain.len() as u64;
+    tracing::Span::current().record("height", &height);
 
-    Ok(BlockTemplate {
+    let template = BlockTemplate {
         version: 1,
         previous_block_hash: hex::encode(latest_block.double_sha256()),
         transactions,
@@ -45,16 +43,27 @@ pub async fn get_block_template(
         timestamp: utils::current_timestamp(),
         height,
         merkle_root: hex::encode(merkle_root),
-    })
+    };
+
+    debug!(
+        //height = %template.height,
+        difficulty = %template.difficulty_compact,
+        tx_count = %template.transactions.len(),
+        "Providing block template"
+    );
+    
+    //info!("Providing block template for height {}", height);
+
+    Ok(template)
 }
 
+#[instrument(skip(state, params), fields(block_hash))]
 pub async fn submit_block(
     State(state): State<NodeState>,
     params: Option<SubmitBlockParams>,
 ) -> Result<SubmitBlockResult, RpcError> {
     let params = params.ok_or_else(|| RpcError::invalid_params("Missing block data"))?;
 
-    // Decode block from hex
     let block_bytes = hex::decode(&params.block_hex)
         .map_err(|e| RpcError::invalid_params(&format!("Invalid hex: {}", e)))?;
 
@@ -62,22 +71,26 @@ pub async fn submit_block(
         .map_err(|e| RpcError::invalid_params(&format!("Invalid block: {}", e)))?;
 
     let block_hash = hex::encode(block.double_sha256());
+    tracing::Span::current().record("block_hash", &block_hash);
 
     // Add block to chain
     let mut chain = state.chain.write().await;
     match chain.add_block(block.clone(), false) {
         Ok(()) => {
-            info!("Block {} accepted and added to chain!", block_hash);
+            info!(
+                //block_hash = %block_hash,
+                height = %chain.len(),
+                tx_count = %block.transactions.len(),
+                "Block accepted"
+            );
 
-            // Remove transactions from mempool
             let mut mempool = state.mempool.write().await;
             for tx in &block.transactions {
                 mempool.remove_tx(tx); 
             }
 
-            // Save chain
             if let Err(e) = crate::storage::save_chain(&*chain) {
-                warn!("Failed to save chain: {}", e);
+                error!("Failed to save blockchain to disk: {}", e);
             }
 
             Ok(SubmitBlockResult {
@@ -86,7 +99,12 @@ pub async fn submit_block(
             })
         },
         Err(e) => {
-            warn!("Block {} rejected: {:?}", block_hash, e);
+            warn!(
+                //block_hash = %block_hash,
+                error = ?e,
+                "Block rejected"
+            );
+
             Ok(SubmitBlockResult {
                 accepted: false,
                 message: Some(format!("{:?}", e)),
